@@ -1,0 +1,56 @@
+from netmiko import ConnectHandler
+import re, threading, sys
+from multiprocessing import Queue
+
+ips_file = open("ip_lists", 'r')  ## open the ip list file from root folder
+ips_file.seek(0)  ## put the first read on the begining
+iplist = ips_file.read().splitlines()  ## splite the ip's in a list
+ips_file.close()
+
+
+def getbackup(ipz, any):
+    out_dic = {}
+    nokia = {
+        'device_type': 'alcatel_sros',
+        'ip': ipz,
+        'username': '****',
+        'password': '******',
+    }
+    connect = ConnectHandler(**nokia)
+
+    # get device name
+    deviceinfo = connect.send_command('show chassis | match Name post-lines 13')
+    devicename = re.search(r"(.+Name) +(:) (.+)", deviceinfo, re.I).group(3)
+    out_dic[devicename] = devicename
+    any.put(output_dict)
+
+    # get the backupFile name / the reason, is because there maybe some nodes have different name of name
+    filename = connect.send_command('show bof | match primary-config')
+    backup = re.search(r"(.+primary-config) +(.+)", filename, re.I).group(2)
+
+    # send backup config to FTP with (ip and device name) like this format example "172.16.16.1_NodeName"
+    connect.send_command(('file copy ')+(backup)+(' ftp://user:pass@192.168.1.1/dimah/')+(ipz)+('_')+(devicename))  
+    
+    connect.disconnect()
+
+if __name__ == "__main__":
+    que = Queue()
+
+    for ip in iplist:
+        # first check if the ip format is wrong 
+        a = ip.split('.')     
+        if (len(a) == 4) and (1 <= int(a[0]) <= 223) and (int(a[0]) != 127) and (
+                int(a[0]) != 169 or int(a[1]) != 254) and (
+                0 <= int(a[1]) <= 255 and 0 <= int(a[2]) <= 255 and 0 <= int(a[3]) <= 255):
+            print('\n')
+            print("IP's formula is good :%s" % ip)
+        else:
+            b = "the wrong ip is %s" % ip
+            print(b)
+            break
+            
+        # now execute the funtion with multithreading model
+        thred = threading.Thread(target=getbackup, args=(ip, que))
+        thred.start()
+
+sys.exit()
